@@ -1,0 +1,304 @@
+---
+title: "Value of a partnership on sales"
+author: "Joey Lewis"
+date: "5/30/2022"
+output: 
+  prettydoc::html_pretty:
+    theme: tactile
+    toc: yes
+
+---
+
+```{=html}
+<style type="text/css">
+  body{
+  font-size: 14pt;
+}
+</style>
+```
+
+```{r set up, include=FALSE}
+#install.packages('prettydoc')
+library(prettydoc)
+library(lubridate)
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(scales)
+library(grid)
+library(knitr)
+
+sales_df = read.csv("C:/Users/user/Desktop/Code/Partner Project/sales_data_clean.csv")%>% 
+  mutate(bregion=str_sub(Owner.Sales.Role.Region,1,3)) %>%
+  mutate(account_size = case_when(bregion =='CAE'~'Commercial',
+                                   bregion =='CAM'~'Commercial',
+                                   bregion =='EAE'~'Enterprise')) %>% 
+  rename(region="Owner.Sales.Role.Region",partner="Is.Deal.Registration",country="Billing.Country",Opportunity.Type="Opportunity.Record.Type",Payment.Type="Plan.Type",projected="Opportunity.ARR",actual="Amount..ACV.")
+
+```
+
+
+## **Introduction and Research Questions **
+
+In this markdown, I completed a project for a university class on data wrangling and visualization. The data represents sales data in 2020 from a mid sized tech company. Any reference to the companies name has been replaced with 'Techno-company'. The complete data set contains `r dim(sales_df)[1]` observations  and `r dim(sales_df)[2]` features. These observations represent a sales pipeline and the span different account sizes, regions and stages of completion. There are a large number of deals that have reached the end of the pipeline as either a win or a loss. 
+
+This hypothetical tech company has recently implemented a partnership program, where they work within their partner network to sell their products through partners as well as selling directly. The purpose of this analysis is to analyze the nature of this partner program and to assess its impact on the business. The hypothetical stakeholders in this scenario seek to know more about the network, and want to be able to best support the budding partner network
+
+
+  **Research Question**
+  In what ways do partnered deals differ from classic deals?
+  
+  Are there differences in factors such as win rate, deal size, account size, time in pipeline or region?
+
+
+## **Data Exploration**
+
+First, let us consider one of the defining features in the data set, deal stage. Below I've included a table summarizing the breakdown of where deals are in the pipeline for our sample.
+
+```{r simple stage breakdown, echo=FALSE,fig.width=3, warning=FALSE}
+howbig=sales_df %>%group_by(Stage) %>% summarise(Count=n())
+kable(howbig, caption='Deals by stage',format = "html", table.attr = "style='width:70%;'")
+```
+
+The majority of observations are either in the beginning of the sales process (Identified) or the end (Closed Lost and Closed Won). Of particular interest are the last two stages, representing the two major outcomes for a lead. 
+
+
+In these closing stages, the rates at which leads turn into wins differs by source. Below I've compared the win rate by source across different lead sources.
+
+```{r ,echo=FALSE,warning=FALSE, message=FALSE,fig.width=7,fig.height=6}
+#just late stage deals
+Source_outcomes=sales_df %>% filter(Stage=="8 - Closed Won" |Stage=="7 - Closed Lost")  %>%filter(Lead.Source!="")  %>% 
+  filter(Lead.Source!="" & Lead.Source!="PPC" & Lead.Source!="Tech Partner"& Lead.Source!="AzureMarketplace-INS|Techno-company ETL" & Lead.Source!='Social') %>% 
+  mutate(Stage=as.integer(str_sub(Stage,1,1))) %>% 
+  group_by(Lead.Source, Stage) %>% summarise(total=n()) %>%  
+  group_by(Lead.Source) %>% summarise(count = sum(total), win_count = (ifelse(Stage==8,total,0))) %>% 
+  group_by(Lead.Source) %>% summarise(win.pct = round(max(win_count)/mean(count),2),ct=mean(count))
+
+#graphs
+f6.1=Source_outcomes %>% ggplot(aes(x=win.pct,fill=Lead.Source,y=reorder(Lead.Source,-win.pct)))+
+  geom_col(position='dodge2')+
+  labs(y='Lead Source',x="Win Rate",title="Figure 1: Close Rates by Source",caption='Note: only sources with >10 observations plotted')+
+  theme_minimal()+
+  theme(legend.position='NULL')
+f6.1
+
+
+```
+
+As we can see, Website leads turn into deals twice as often as Event leads. Referral and Drift all seem like high percentage lead types. Paid and event seem the least successful, unclear why from the data. Interestingly, some of the most common categories seem to be ones with the lowest rate of closure.
+
+Now, let us look at the breakdown of lead sources as part of overall sales. Below I've included a table detailing the sum value of won deals in all categories. The total revenue from these activities is **`r dollar(sum(sales_df %>% filter(actual > 0 & Stage == '8 - Closed Won') %>% pull(actual)))`**
+
+
+
+```{r,echo=FALSE,message=FALSE}
+source_revnue=sales_df %>% 
+  filter(actual>0 & Stage == '8 - Closed Won') %>% 
+  group_by(Lead.Source) %>% summarise(Count=n(),Total=(sum(actual)))%>%
+  arrange(-Total)%>% 
+  mutate(PctRevenue= percent(round(Total/sum(sales_df %>% filter(actual > 0 & Stage == '8 - Closed Won') %>% pull(actual)),3)),
+         Total=dollar(Total)) %>% 
+  mutate(Lead.Source = case_when(Lead.Source ==''~'Unknown Source',
+                                 Lead.Source != ''~Lead.Source))
+
+kable(source_revnue, caption='Revenue by Lead Source',format = "html", table.attr = "style='width:60%;'")
+
+
+```
+
+
+
+
+
+## **In what ways do partner deals differ from classic deals?**
+
+The closed deals with partners make up a revenue of `r dollar(sales_df %>% filter(actual>0 & Stage == '8 - Closed Won' & partner ==1) %>% group_by(partner) %>% summarise(Total=(sum(actual))) %>% pull(Total))`, which is roughly a third of total sales revenue. Numerically, there were `r sales_df %>% filter(actual>0 & Stage == '8 - Closed Won') %>% group_by(partner) %>% summarise(count=n()) %>% mutate(pct=100*count/sum(count)) %>% slice(2) %>% pull(count)` partner deals which made up `r percent(sales_df %>% filter(actual>0 & Stage == '8 - Closed Won') %>% group_by(partner) %>% summarise(count=n()) %>% mutate(pct=count/sum(count)) %>% slice(2) %>% pull(pct))` of deals.
+
+
+Moving beyond this, it is of interest to us to uncover the more intangible ways in which the partner network brings in value.
+
+
+
+### **Win rate**
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+partner_wins = sales_df %>%
+      filter(Stage %in% c('8 - Closed Won', '7 - Closed Lost')) %>%
+      group_by(partner,Stage) %>% 
+      summarise(count=n()) %>% 
+      group_by(partner) %>% 
+      mutate(pct = count / sum(count))
+
+```
+
+One of the most basic of these is the higher rates at which partner deals close. Over this time frame, partner `r percent(partner_wins %>% filter(partner==1) %>% slice(2) %>% pull(pct))` of closed deals with partners were wins while only `r percent(partner_wins %>% filter(partner==0) %>% slice(2) %>% pull(pct))` of closed deals without partners were wins. This increase is likely a result of better prospecting and generation of higher quality leads.
+
+
+
+
+```{r partner analysis, echo=FALSE,message=FALSE}
+Partner_stage=sales_df %>% 
+  filter(Stage == '8 - Closed Won' | Stage == '7 - Closed Lost') %>% 
+  group_by(Stage,partner) %>% summarise(avgage=round(mean(Age)),count=n()) 
+
+f7=Partner_stage %>% 
+  ggplot(aes(x=Stage,y=count,fill=factor(partner)))+
+  geom_col(position="fill")+
+  labs(x="Stage",y="Percent",title="Figure 2: Deals with partners win at higher rates",fill='Partner')+
+  geom_text(aes(label=count),position=position_fill(vjust=0.7))+
+  theme_minimal()#+
+  #theme(axis.ticks.x = element_blank(),axis.text.x=element_blank())
+
+f7
+```
+
+
+### **Deal size and Account size**
+
+```{r, echo=FALSE}
+naive_dealsize = sales_df %>% 
+  filter(actual>0 & Stage == '8 - Closed Won') %>%
+  group_by(partner) %>% summarise(mean = dollar(mean(actual)),count=n())
+```
+
+
+From a broad level, the deal size among partner deals is marginally  smaller than closed deals without partners. Closed deals with a partner were on average `r naive_dealsize %>% slice(2) %>% pull(mean)` while closed deals without a partner were `r naive_dealsize %>% slice(1) %>% pull(mean)`. This comparison doesn't tell the whole story though, as account sizes differ across categories. The two account sizes referenced in the data can be understood as:
+
+**CAE** (Commercial): Company under \$250 million
+
+**EAE** (Enterprise): Company over \$250 million
+
+Deals on enterprise accounts were far larger than those on commercial accounts.
+
+```{r, echo=FALSE}
+account_size_df = sales_df %>% filter(Stage=='8 - Closed Won'& bregion %in% c('CAE','CAM','EAE') & actual > 0)  %>% 
+  group_by(account_size) %>% summarise(count=n(),sum_total = dollar(sum(actual)), mean_deal = dollar(mean(actual)))
+
+```
+
+
+```{r, echo=FALSE}
+kable(account_size_df,
+      col.names = c('Account Size','Number of Deals','Sum Revenue','Average Deal Size'),
+      format = "html", table.attr = "style='width:60%;'",
+      caption = 'Breakdown of deals by account size')
+```
+
+
+
+```{r, echo =FALSE,message=FALSE}
+account_size_df = sales_df %>% filter(Stage=='8 - Closed Won'& bregion %in% c('CAE','CAM','EAE') & actual > 0) %>% 
+  group_by(account_size, partner) %>% summarise(count=n(),sum_total = sum(actual), mean_deal = mean(actual))
+```
+
+When we breakdown these numbers in figure 5, we see that partner deals make up a slightly larger proportion of enterprise deals than commercial deals.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+f5=account_size_df %>% 
+  ggplot(aes(x=account_size,y=sum_total,fill=factor(partner)))+
+  geom_col(position="fill")+
+  labs(x="Stage",y="Total",title="Figure 3: Breakdown of account size revenue",fill='Partner')+
+  geom_text(aes(label=dollar(sum_total)),position=position_fill(vjust=0.7))+
+  theme_minimal()+
+  theme(axis.ticks.y = element_blank())
+
+f5
+```
+
+Given that partnered deals are slightly more likely to be enterprise deals. It is surprising that partner deals are generally smaller, given that enterprise deals are larger deals. 
+
+How could this be the case?
+
+It turns out that deal size is not consistent across partner/no-partner. Commercial deals with a partner appear to be significantly smaller on average than their non-partnered counterparts.
+
+
+
+```{r, message=FALSE,warning=FALSE,echo=FALSE}
+kable(sales_df %>% filter(Stage=='8 - Closed Won' & actual >0 & account_size %in% c('Commercial','Enterprise')) %>% group_by(account_size,partner) %>% summarise(mean_size = dollar(mean(actual))),
+      col.names = c('Account Size','Partner','Mean Deal Size'),
+      format = "html", table.attr = "style='width:60%;'",
+      caption = 'Different deal sizes in commercial accounts')
+```
+
+
+### **Time in pipeline**
+
+Another question of interest is whether or not partner deals move through the pipeline at a different speed than non-partnered deals.
+
+
+```{r,echo=FALSE, warning=FALSE,message=FALSE}
+age_in_stage = sales_df %>% group_by(partner, Stage) %>%  summarise(mean_age = mean(Age), count=n())
+
+f3=age_in_stage %>% 
+  ggplot(aes(x=mean_age,y=Stage,color=factor(partner)))+
+  geom_point(size=3)+
+  labs(color="Partner",x="Avg Age in Days",y="Deal Stage",title="Figure 4: Partner deals move slower")+
+  theme_bw()
+f3
+```
+
+
+It appears that across the board these deals move slower. This is generally in line with the intuition that partner deals posses more moving parts and are therefore a more complicated process.
+
+This isn't inherently a bad thing. Deals with a partner have a fundamentally different approach to non partnered deals, so this may not be a direct comparison. 
+
+```{r, echo=FALSE}
+sizeinstage=sales_df %>% 
+  filter(account_size %in% c('Commercial','Enterprise')) %>% 
+  filter(Stage == '8 - Closed Won') %>% 
+  group_by(account_size) %>% summarise(avg_age = round(mean(Age)))
+
+```
+
+
+This comparison is also robust to account size. Overall the smaller commercial accounts take an average of `r sizeinstage %>% slice(1) %>% pull(avg_age)` days while the enterprise accounts on average took `r sizeinstage %>% slice(2) %>% pull(avg_age)` days to complete. Within these account sizes, the trend of partner deals taking longer remained, as shown below.
+
+
+
+```{r,warning=FALSE,message=FALSE,echo=FALSE}
+sizeinstage2=sales_df %>% 
+  filter(account_size %in% c('Commercial','Enterprise')) %>% 
+  filter(Stage == '8 - Closed Won') %>% 
+  group_by(account_size, partner) %>% summarise(avg_age = round(mean(Age)))
+  
+kable(sizeinstage2, caption='Average Deal Length',
+      col.names = c('Account Size','Partner','Avg Completed Deal Age'),
+      format = "html", table.attr = "style='width:60%;'")
+
+```
+
+### **Region**
+
+One of the benefits of a partner network is that partners can provide assistance in their own region, where one might not have much experience.
+
+
+Closed deals in this data set are most often closed in the United States, and these deals make up `r dollar(sales_df %>% filter(Stage == '8 - Closed Won'& actual >0 & country =='United States') %>% group_by(country) %>% summarise(sum = sum(actual)) %>% pull(sum))` of the total sales. 
+
+Excluding these deals, the partner network makes up a larger share of international deals.
+
+```{r, echo=FALSE}
+kable(sales_df %>% filter(country!='United States' & actual >0 & Stage == '8 - Closed Won') %>% group_by(partner) %>% summarise(sum=dollar(sum(actual))),
+      col.names = c('Partner','Sum'),
+      format = "html", table.attr = "style='width:30%;'",
+      caption = 'Deals excluding the US')
+```
+
+Interestingly, within some countries the partner network makes up a majority of deals. In countries such as the Netherlands, the United Kingdom, New Zealand or Belgium, the partnered deals are more valuable than non partnered deals.
+
+It would be incredibly valuable to the organization to be analyze this trend over time. One of the main limitations of this data set is that it only encompasses one year of observations. There is a chance that the countries with budding partner networks develop into countries where more business is done overall. In other words, a partner in a foreign country might act as a foot in the door to drive future sales.
+
+
+```{r,echo=FALSE,message=FALSE}
+chcher = sales_df %>% filter(Stage == '8 - Closed Won' & actual >0 & country!='United States') %>% group_by(partner,country) %>% summarise(count=n(),sum=sum(actual)) %>% arrange(-sum) %>% mutate(sum = dollar(sum))
+```
+
+## **Conclusion**
+
+This new partner network appears to provide valuable opportunities to the Techno-company. It has quickly expanded into countries where little business is done without partners. 
+
+
+There are some distinct differences between partnered deals and non partnered deals. In terms of win rate, partnered deals win more often than their non partnered counterparts. These partnered deals also take significantly longer, due in some part to the number of moving pieces in more complicated deals. Partner deals also appear to be smaller when done with on a commercial account.
+
+The recommended steps going forward would be for the Techno-company to further investigate the ways in which their business is growing. With data over a longer time horizon, decision makers could better analyze the effects of the partner network on expanding the business to new markets. While some of the signs point in this direction from this analysis, it is far from conclusive. With a larger amount of data, the Techno-company would be more able to discern if this partner network helps expansion.
