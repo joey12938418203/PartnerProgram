@@ -13,4 +13,6 @@ Are there differences in factors such as win rate, deal size, account size, time
 
 One can download the file titled 'Partner_project_markdown.html' to view the project.
 
+One can also view a preview of this html file by clicking [here](https://htmlpreview.github.io/?https://github.com/joey12938418203/PartnerProgram/blob/main/Partner_Project_markdown.html)
+
 This file was created using Rstudio and the 'Partner_project_markdown.rmd' file. One can also view this file if they wish to play around with the project.
