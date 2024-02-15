@@ -8,3 +8,9 @@ The questions asked are:
 In what ways do partnered deals differ from classic deals?
 
 Are there differences in factors such as win rate, deal size, account size, time in pipeline or region?
+
+# To view the project
+
+One can download the file titled 'Partner_project_markdown.html' to view the project.
+
+This file was created using Rstudio and the 'Partner_project_markdown.rmd' file. One can also view this file if they wish to play around with the project.
